@@ -108,7 +108,6 @@ def addCardToUserCollection():
         if res is None:
             sql = "INSERT INTO cards (id,data,set_id) VALUES (%s, %s, %s);"
             try:
-                print("try None")
                 cur.execute(sql, (card['object']['id'],json.dumps(card),card['object']['set']['id']))
                 conn.commit()
                 result.append({'message': 'card add to cards',"result":201})
@@ -142,6 +141,7 @@ def getUserCollection():
     results = cur.fetchall()    
     cur.close()
     conn.close()
+    print(results[0])
     return jsonify([row[0] for row in results]), 200
 
 
