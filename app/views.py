@@ -117,7 +117,7 @@ def addCardToUserCollection():
                 result.append({"error": str(e)})
   
 
-    sql = "INSERT INTO collection (userid,setid,cardid,quantity) VALUES (%s, %s, %s, %s);"
+    sql = "INSERT INTO collection (userid,setid,cardid,quantity) VALUES (%s, %s, %s, %s) ON CONFLICT (userid,cardid) DO UPDATE SET quantity=collection.quantity+EXCLUDED.quantity"
     try:
         cur.executemany(sql, [(current_user,card['object']['set']['id'],card['object']['id'],card['count']) for card in distinct_cards_with_counts])
         conn.commit()
