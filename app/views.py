@@ -12,7 +12,10 @@ import psycopg2
 import json
 
 app = Flask(__name__)
-CORS(app, resources={r"*": {"origins": "*"}})
+jwt = JWTManager(app)
+CORS(app, resources={r"*": {"origins": "*"}},supports_credentials=True)
+
+
 
 app.config['JWT_SECRET_KEY'] = "5?]Pz[w:bV64wx7bH53@e7HHu(X!;4NP"
 app.config['MAIL_SERVER'] = 'your_mail_server'
@@ -56,10 +59,10 @@ def register():
         return jsonify({'message': 'Username or email already in use'}), 400
     else:
       print("No results found.")
-      sql = "INSERT INTO users (pseudo,email,password) VALUES (%s, %s, %s);"
+      sql = "INSERT INTO users (pseudo,email,password,pokedollars) VALUES (%s, %s, %s,%s);"
 
       try:
-          cur.execute(sql, (username,email,generate_password_hash(password)))
+          cur.execute(sql, (username,email,generate_password_hash(password),10000    ))
           conn.commit()
           return jsonify({'message': 'User registered successfully'}), 201
       except Exception as e:
@@ -84,7 +87,12 @@ def login():
     user = cur.fetchone()   
     if user and check_password_hash(user[3], password):
         access_token = create_access_token(identity=username)
-        return jsonify({'access_token': access_token}), 200
+        cur.execute("Select pokedollars from users where pseudo='"+username+"'")
+        usermoney = cur.fetchone()   
+        resp = jsonify({'login': True})
+        resp.set_cookie('access_token_cookie', access_token, secure=True, httponly=True)
+        return resp 
+        #return jsonify({'access_token': access_token,'money':float(usermoney[0])}), 200
     else:
         return jsonify({'message': 'Invalid credentials'}), 401
     
@@ -141,8 +149,23 @@ def getUserCollection():
     results = cur.fetchall()    
     cur.close()
     conn.close()
-    print(results[0])
     return jsonify([row[0] for row in results]), 200
+
+
+@app.route('/buyBoosters', methods=['POST'])
+@jwt_required()
+def buyBoosters():
+    current_user = get_jwt_identity()
+    print(current_user)
+    # conn = connect_to_db()
+    # cur = conn.cursor()
+    # cur.execute("SELECT distinct cards.data FROM collection join cards on cards.id=collection.cardid where collection.userid=%s", (current_user,))
+    # results = cur.fetchall()    
+    # cur.close()
+    # conn.close()
+    return jsonify({}), 200
+
+
 
 
 
