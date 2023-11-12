@@ -110,7 +110,7 @@ def addCardToUserCollection():
         if res is None:
             sql = "INSERT INTO cards (id,data,set_id) VALUES (%s, %s, %s);"
             try:
-                cur.execute(sql, (card['object']['id'],json.dumps(card),card['object']['set']['id']))
+                cur.execute(sql, (card['object']['id'],json.dumps(card['object']),card['object']['set']['id']))
                 conn.commit()
                 result.append({'message': 'card add to cards',"result":201})
             except Exception as e:
@@ -118,9 +118,10 @@ def addCardToUserCollection():
                 result.append({"error": str(e)})
   
 
-    sql = "INSERT INTO collection (userid,setid,cardid,quantity) VALUES (%s, %s, %s, %s) ON CONFLICT (userid,cardid) DO UPDATE SET quantity=collection.quantity+EXCLUDED.quantity"
+    sql = "INSERT INTO collection (userid,setid,cardid,quantity) VALUES (%s, %s, %s, %s) ON CONFLICT (userid,cardid) DO UPDATE SET quantity=(collection.quantity+EXCLUDED.quantity)"
     try:
-        cur.executemany(sql, [(current_user,card['object']['set']['id'],card['object']['id'],card['count']) for card in distinct_cards_with_counts])
+        cur.executemany(sql, ((current_user,card['object']['set']['id'],card['object']['id'],card['count']) for card in distinct_cards_with_counts))
+        print(cur.statusmessage)
         conn.commit()
         result.append({'message': 'cards add to collection',"result":201})
     except Exception as e:
@@ -139,7 +140,7 @@ def getUserCollection():
     print(current_user)
     conn = connect_to_db()
     cur = conn.cursor()
-    cur.execute("SELECT distinct cards.data FROM collection join cards on cards.id=collection.cardid where collection.userid=%s", (current_user,))
+    cur.execute("SELECT json_build_object('object',cards.data,'count',collection.quantity) FROM collection join cards on cards.id=collection.cardid where collection.userid=%s", (current_user,))
     results = cur.fetchall()    
     cur.close()
     conn.close()
@@ -151,12 +152,22 @@ def getUserCollection():
 def buyBoosters():
     current_user = get_jwt_identity()
     print(current_user)
-    # conn = connect_to_db()
-    # cur = conn.cursor()
-    # cur.execute("SELECT distinct cards.data FROM collection join cards on cards.id=collection.cardid where collection.userid=%s", (current_user,))
-    # results = cur.fetchall()    
-    # cur.close()
-    # conn.close()
+    data=request.get_json()
+    amount=data['money']
+    conn = connect_to_db()
+    cur = conn.cursor()
+    cur.execute("Select pokedollars from users where pseudo='"+current_user+"'")
+    usermoney = float(cur.fetchone()[0]) 
+    if(amount<usermoney):
+        cur.execute("UPDATE users SET pokedollars= %s where pseudo=%s ",(usermoney-amount,current_user,))
+        conn.commit()
+        print('here')
+        return jsonify({'money':'true'}), 200
+    else:
+        return  jsonify({'money':'false'}), 200
+
+
+
     return jsonify({}), 200
 
 
