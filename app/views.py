@@ -11,7 +11,7 @@ from flask_jwt_extended import JWTManager
 from flask_mail import Mail
 import psycopg2
 import json
-
+import requests
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app, resources={r"*": {"origins": "*"}})
@@ -186,6 +186,29 @@ def getUserData():
     conn.close()
     return jsonify({'money':float(results[5]),'user':results[1]}), 200
 
+
+@app.route('/scrapSetsAndCards', methods=['GET'])
+def scrapp():
+    conn = connect_to_db()
+    cur = conn.cursor()
+
+    headers = {'X-Api-Key': '6ef86c9f-633b-4411-a6cd-1d8b01533a46',}
+    datasets = requests.get('https://api.pokemontcg.io/v2/sets', headers=headers).json()['data']
+    sql = "INSERT INTO sets (id,total_cards,data) VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE SET total_cards=sets.total_cards,data=sets.data"
+    filter=['basep', 'si1', 'np', 'dpp', 'ru1', 'hsp', 'bwp', 'mcd11', 'mcd12', 'xyp', 'xy0', 'mcd16', 'smp', 'mcd19', 'swshp', 'mcd14', 'mcd15', 'mcd18', 'mcd17', 'mcd21', 'bp', 'fut20', 'tk1a', 'tk1b', 'tk2a', 'tk2b', 'mcd22', 'svp', 'sve']
+
+    cur.executemany(sql,((dataset['id'],dataset['total'],json.dumps(dataset))  for dataset in datasets if dataset['id'] not in filter))
+    conn.commit()
+    for set in datasets:
+        print(set['id'])
+        if(set['id']not in filter):
+            cards=requests.get('https://api.pokemontcg.io/v2/cards?q=set.id:'+set['id'], headers=headers).json()['data']
+            sql = "INSERT INTO cards (id,data,set_id) VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE SET data=cards.data,set_id=cards.set_id"
+            cur.executemany(sql,((card['id'],json.dumps(card),card['set']['id']) for card in cards))
+            conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({'money':'success'}), 200
 
 
 
