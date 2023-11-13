@@ -6,12 +6,14 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS,cross_origin
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from flask_socketio import SocketIO, emit
 from flask_jwt_extended import JWTManager
 from flask_mail import Mail
 import psycopg2
 import json
 
 app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app, resources={r"*": {"origins": "*"}})
 
 app.config['JWT_SECRET_KEY'] = "5?]Pz[w:bV64wx7bH53@e7HHu(X!;4NP"
@@ -86,7 +88,8 @@ def login():
     if user and check_password_hash(user[3], password):
         access_token = create_access_token(identity=username)
         cur.execute("Select pokedollars from users where pseudo='"+username+"'")
-        usermoney = cur.fetchone()    
+        usermoney = cur.fetchone()   
+        socketio.emit('value_updated', {'money':float(usermoney[0]) ,'user':username}) 
         return jsonify({'access_token': access_token,'money':float(usermoney[0])}), 200
     else:
         return jsonify({'message': 'Invalid credentials'}), 401
@@ -162,6 +165,7 @@ def buyBoosters():
     if(amount<usermoney):
         cur.execute("UPDATE users SET pokedollars= %s where pseudo=%s ",(usermoney-amount,current_user,))
         conn.commit()
+        socketio.emit('value_updated', {'money': usermoney-amount,'user':current_user})
         print('here')
         return jsonify({'money':'true'}), 200
     else:
@@ -169,7 +173,18 @@ def buyBoosters():
 
 
 
-    return jsonify({}), 200
+@app.route('/getUserData', methods=['GET'])
+@jwt_required()
+def getUserData():
+    current_user = get_jwt_identity()
+    print(current_user)
+    conn = connect_to_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users where pseudo=%s", (current_user,))
+    results = cur.fetchone()    
+    cur.close()
+    conn.close()
+    return jsonify({'money':float(results[5]),'user':results[1]}), 200
 
 
 
