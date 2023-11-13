@@ -15,6 +15,7 @@ app = Flask(__name__)
 CORS(app, resources={r"*": {"origins": "*"}})
 
 app.config['JWT_SECRET_KEY'] = "5?]Pz[w:bV64wx7bH53@e7HHu(X!;4NP"
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False
 app.config['MAIL_SERVER'] = 'your_mail_server'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
