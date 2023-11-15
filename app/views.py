@@ -70,7 +70,7 @@ def login():
         access_token = create_access_token(identity=username)
         cur.execute("Select pokedollars from users where pseudo=%s",(username,))
         usermoney = cur.fetchone()   
-        socketio.emit('value_updated', {'money':float(usermoney[0]) ,'user':username}) 
+        socketio.emit('value_updated', {'money':float(usermoney[0]) ,'user':username},room=connected_users[username]) 
         return jsonify({'access_token': access_token,'money':float(usermoney[0])}), 200
     else:
         return jsonify({'message': 'Invalid credentials'}), 401
@@ -253,13 +253,14 @@ def scrapp():
     headers = {'X-Api-Key': '6ef86c9f-633b-4411-a6cd-1d8b01533a46',}
     datasets = requests.get('https://api.pokemontcg.io/v2/sets', headers=headers).json()['data']
     sql = "INSERT INTO sets (id,total_cards,data) VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE SET total_cards=sets.total_cards,data=sets.data"
-    filter=['basep', 'si1', 'np', 'dpp', 'ru1', 'hsp', 'bwp', 'mcd11', 'mcd12', 'xyp', 'xy0', 'mcd16', 'smp', 'mcd19', 'swshp', 'mcd14', 'mcd15', 'mcd18', 'mcd17', 'mcd21', 'bp', 'fut20', 'tk1a', 'tk1b', 'tk2a', 'tk2b', 'mcd22', 'svp', 'sve']
+    filter=['dv1','basep', 'si1', 'np', 'dpp', 'ru1', 'hsp', 'bwp', 'mcd11', 'mcd12', 'xyp', 'xy0', 'mcd16', 'smp', 'mcd19', 'swshp', 'mcd14', 'mcd15', 'mcd18', 'mcd17', 'mcd21', 'bp', 'fut20', 'tk1a', 'tk1b', 'tk2a', 'tk2b', 'mcd22', 'svp', 'sve']
+    #tcg=['sv4', 'sv3Pt5', 'sv3', 'sv2', 'sv1', 'swsh12Pt5', 'swsh12', 'swsh11', 'swshTCGxGO', 'swsh10', 'swsh9', 'swsh8', 'swsh25', 'swsh7', 'swsh6', 'swsh5', 'swsh4Pt5', 'swsh4', 'swsh3Pt5', 'swsh3', 'swsh2', 'swsh1', 'sm12', 'sm11Pt5', 'sm11', 'sm10', 'smGum', 'sm9', 'sm8', 'sm7Pt5', 'sm7', 'sm6', 'sm5', 'sm4', 'sm3Pt5', 'sm3', 'sm2', 'sm1', 'xy12', 'xy11', 'xy10', 'xy9Pt5', 'xy9', 'xy8', 'xy7', 'xy6', 'xy5Pt5', 'xy5', 'xy4', 'xy3', 'xy2', 'xy1', 'bw11', 'bw10', 'bw9', 'bw8', 'bw7', 'bw6Pt5', 'bw6', 'bw5', 'bw4', 'bw3', 'bw2', 'bw1']
 
     cur.executemany(sql,((dataset['id'],dataset['total'],json.dumps(dataset))  for dataset in datasets if dataset['id'] not in filter))
     conn.commit()
     for set in datasets:
         print(set['id'])
-        if(set['id']not in filter):
+        if(set['id'] in tcg):
             cards=requests.get('https://api.pokemontcg.io/v2/cards?q=set.id:'+set['id'], headers=headers).json()['data']
             sql = "INSERT INTO cards (id,data,set_id) VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE SET data=cards.data,set_id=cards.set_id"
             cur.executemany(sql,((card['id'],json.dumps(card),card['set']['id']) for card in cards))
@@ -269,6 +270,20 @@ def scrapp():
     return jsonify({'money':'success'}), 200
 
 
+@app.route('/param', methods=['GET'])
+def param():
+    conn = connect_to_db()
+    cur = conn.cursor()
+    headers = {'X-Api-Key': '6ef86c9f-633b-4411-a6cd-1d8b01533a46',}
+    datasets = requests.get('https://api.pokemontcg.io/v2/sets', headers=headers).json()['data']
+    sql = "INSERT INTO sets (id,total_cards,data) VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE SET total_cards=sets.total_cards,data=sets.data"
+    filter=['dv1','basep', 'si1', 'np', 'dpp', 'ru1', 'hsp', 'bwp', 'mcd11', 'mcd12', 'xyp', 'xy0', 'mcd16', 'smp', 'mcd19', 'swshp', 'mcd14', 'mcd15', 'mcd18', 'mcd17', 'mcd21', 'bp', 'fut20', 'tk1a', 'tk1b', 'tk2a', 'tk2b', 'mcd22', 'svp', 'sve']
+    #tcg=['sv4', 'sv3Pt5', 'sv3', 'sv2', 'sv1', 'swsh12Pt5', 'swsh12', 'swsh11', 'swshTCGxGO', 'swsh10', 'swsh9', 'swsh8', 'swsh25', 'swsh7', 'swsh6', 'swsh5', 'swsh4Pt5', 'swsh4', 'swsh3Pt5', 'swsh3', 'swsh2', 'swsh1', 'sm12', 'sm11Pt5', 'sm11', 'sm10', 'smGum', 'sm9', 'sm8', 'sm7Pt5', 'sm7', 'sm6', 'sm5', 'sm4', 'sm3Pt5', 'sm3', 'sm2', 'sm1', 'xy12', 'xy11', 'xy10', 'xy9Pt5', 'xy9', 'xy8', 'xy7', 'xy6', 'xy5Pt5', 'xy5', 'xy4', 'xy3', 'xy2', 'xy1', 'bw11', 'bw10', 'bw9', 'bw8', 'bw7', 'bw6Pt5', 'bw6', 'bw5', 'bw4', 'bw3', 'bw2', 'bw1']
+    for set in datasets:
+        print(set['id'])
+        if(set['id']not in filter):
+            sql = "select distinct (data->'rarity') from cards where set_id=%s"
+            res=cur.execute(sql,(set['id'],))
 
 
 
