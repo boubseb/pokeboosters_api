@@ -1,16 +1,17 @@
 import logging as lg
 from collections import Counter
 lg.basicConfig(format='%(levelname)-2s -%(message)s',level=lg.INFO)
+
 from flask import Flask, jsonify, request,session
 from flask_cors import CORS,cross_origin
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity,JWTManager
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from flask_socketio import SocketIO, emit
+from flask_jwt_extended import JWTManager
 from flask_mail import Mail
 import psycopg2
 import json
 import requests
-
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS(app, resources={r"*": {"origins": "*"}})
@@ -44,19 +45,33 @@ DEBUG = True
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 
-@socketio.on('user_connect')
+@socketio.on('user_action')
 @jwt_required()
-def handle_connection():
+def handle_connection(data):
+    print("connection? ",data)
+    print(connected_users)
     current_user= get_jwt_identity()
-    conn = connect_to_db()
-    cur = conn.cursor()
-    cur.execute("Select pokedollars from users where pseudo=%s",(current_user,))
-    usermoney = cur.fetchone()   
-    cur.close()
-    conn.close()
-    connected_users[current_user.strip()] = request.sid
-    socketio.emit('value_updated', {'money':float(usermoney[0]) ,'user':current_user},room=connected_users[current_user]) 
-    print("New user sign in!\nThe users are: ",current_user)
+    if data:
+        conn = connect_to_db()
+        cur = conn.cursor()
+        cur.execute("Select pokedollars from users where pseudo=%s",(current_user,))
+        usermoney = cur.fetchone()   
+        cur.close()
+        conn.close()
+        if current_user.strip() in connected_users:
+            connected_users[current_user.strip()].append(request.sid)
+        else :
+            connected_users[current_user.strip()]=[request.sid]
+        for connection in connected_users[current_user.strip()]:
+            socketio.emit('value_updated', {'money':float(usermoney[0]) ,'user':current_user},room=connection) 
+        print("New user sign in!\nThe users are: ",current_user)
+    else:
+        connected_users[current_user.strip()].remove(request.sid)
+        if len(connected_users[current_user.strip()])==0:
+            del connected_users[current_user.strip()]
+
+        print("user logout !\nThe users are: ",current_user.strip(),"sid: ",request.sid)
+
 
       
 
@@ -101,7 +116,7 @@ def register():
       sql = "INSERT INTO users (pseudo,email,password,pokedollars) VALUES (%s, %s, %s,%s);"
 
       try:
-          cur.execute(sql, (username,email,generate_password_hash(password),2500    ))
+          cur.execute(sql, (username,email,generate_password_hash(password),10000    ))
           conn.commit()
           return jsonify({'message': 'User registered successfully'}), 201
       except Exception as e:
@@ -139,6 +154,7 @@ def deleteAccount():
     cur.close()
     conn.close()
     return jsonify({'message':'succes change delete account'}), 200
+   
     
 
 @app.route('/addCardToUserCollection', methods=['PUT'])
@@ -151,13 +167,10 @@ def addCardToUserCollection():
     result=[]
     dict_counts = Counter(json.dumps(item, sort_keys=True) for item in cards)
     distinct_cards_with_counts = [{'object': json.loads(item), 'count': count} for item, count in dict_counts.items()]
+
     sql = "INSERT INTO collection (userid,setid,cardid,quantity) VALUES (%s, %s, %s, %s) ON CONFLICT (userid,cardid) DO UPDATE SET quantity=(collection.quantity+EXCLUDED.quantity)"
     try:
         cur.executemany(sql, ((current_user,card['object']['set']['id'],card['object']['id'],card['count']) for card in distinct_cards_with_counts))
-        
-    sql = "INSERT INTO collection (userid,setid,cardid,quantity) VALUES (%s, %s, %s, %s) ON CONFLICT (userid,cardid) DO UPDATE SET quantity=collection.quantity+EXCLUDED.quantity"
-    try:
-        cur.executemany(sql, [(current_user,card['object']['set']['id'],card['object']['id'],card['count']) for card in distinct_cards_with_counts])
         conn.commit()
         result.append({'message': 'cards add to collection',"result":201})
     except Exception as e:
@@ -176,13 +189,11 @@ def getUserCollection():
     print(current_user)
     conn = connect_to_db()
     cur = conn.cursor()
-    cur.execute("SELECT distinct cards.data FROM collection join cards on cards.id=collection.cardid where collection.userid=%s", (current_user,))
+    cur.execute("SELECT json_build_object('object',cards.data,'count',collection.quantity) FROM collection join cards on cards.id=collection.cardid where collection.userid=%s", (current_user,))
     results = cur.fetchall()    
     cur.close()
     conn.close()
-    print(results[0])
     return jsonify([row[0] for row in results]), 200
-
 
 
 @app.route('/getDataSets', methods=['GET'])
@@ -224,7 +235,9 @@ def buyBoosters():
         cur.execute("UPDATE users SET pokedollars= %s where pseudo=%s ",(usermoney-amount,current_user,))
         conn.commit()
         # Emit message to the user's socket
-        socketio.emit('value_updated', {'money': usermoney - amount, 'user': current_user}, room=connected_users[current_user])
+        for connection in connected_users[current_user.strip()]: 
+            print("con:",connection)
+            socketio.emit('value_updated', {'money': usermoney - amount, 'user': current_user}, room=connection)
 
         return jsonify({'money':'true'}), 200
     else:
@@ -242,7 +255,8 @@ def getUserData():
     results = cur.fetchone()    
     cur.close()
     conn.close()
-    #socketio.emit('value_updated', {'money': float(results[5]), 'user': current_user}, room=connected_users[current_user])
+    # for connection in connected_users[current_user.strip()]:
+    #     socketio.emit('value_updated', {'money': float(results[5]), 'user': current_user}, room=connection)
     return jsonify({'money':float(results[5]),'user':results[1],'email':results[2]}), 200
 
 
@@ -258,7 +272,7 @@ def scrapp():
     conn.commit()
     for set in datasets:
         print(set['id'])
-        if(set['id'] not in filter):
+        if(set['id'] in tcg):
             cards=requests.get('https://api.pokemontcg.io/v2/cards?q=set.id:'+set['id'], headers=headers).json()['data']
             sql = "INSERT INTO cards (id,data,set_id) VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE SET data=cards.data,set_id=cards.set_id"
             cur.executemany(sql,((card['id'],json.dumps(card),card['set']['id']) for card in cards))
